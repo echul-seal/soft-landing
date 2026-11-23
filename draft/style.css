@@ -40,7 +40,8 @@ body{color:#f3ead9}
 #card .notice .hd{letter-spacing:.18em;font-size:10.5px;border-bottom:1px solid currentColor;padding-bottom:10px;margin-bottom:16px;opacity:.75}
 #card .notice span{opacity:0;transition:opacity .9s;display:block}
 #card .notice span.on{opacity:1}
-#card button{margin-top:34px;pointer-events:auto;appearance:none;background:transparent;border:1px solid currentColor;color:inherit;border-radius:999px;padding:14px 30px;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;opacity:0;transition:opacity 1s}
+#card button{margin-top:34px;pointer-events:none;appearance:none;background:transparent;border:1px solid currentColor;color:inherit;border-radius:999px;padding:14px 30px;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;opacity:0;transition:opacity 1s}
 #card button.on{opacity:.9}
+#card.on button{pointer-events:auto}
 #mute{position:absolute;right:max(14px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom));pointer-events:auto;appearance:none;background:transparent;border:0;color:#f3ead9;opacity:.35;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;cursor:pointer;padding:8px}
 @media (max-width:560px){#radio{font-size:13px;bottom:calc(128px + env(safe-area-inset-bottom))}#voice{bottom:calc(20vh + env(safe-area-inset-bottom))}}
