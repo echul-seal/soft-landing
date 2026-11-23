@@ -1,4 +1,4 @@
-// Soft Landing v1
+// Soft Landing v2
 (() => {
 'use strict';
 const $ = id => document.getElementById(id);
@@ -30,7 +30,7 @@ function say(t, ms) { sayEl.textContent = t; sayEl.classList.add('on'); clearTim
 function act() { S.last = now(); S.idle = 0; Snd.init(); if (!S.started) { S.started = true; notice.classList.add('gone'); } }
 setTimeout(() => notice.classList.add('gone'), 8000);
 
-// the lights
+// the lights. under them, later, the names of the work they replaced
 const PRAISE = ['lovely', 'nice', 'yes', 'perfect', 'so good', 'wonderful', 'beautiful', 'a natural', 'amazing'];
 const WORDS = ['reply', 'file', 'review', 'approve', 'schedule', 'follow up', 'sort', 'submit', 'sync', 'flag', 'invoice', 'check'];
 function spawnMote(force) {
@@ -56,7 +56,6 @@ room.addEventListener('pointerdown', e => {
 });
 $('plant').addEventListener('pointerdown', e => { e.stopPropagation(); act(); gain(5 * mult(), e.clientX, e.clientY - 30, 'it likes you'); Snd.chime(2); });
 
-// the number
 function draw() {
   S.shown += (S.score - S.shown) * 0.15; if (Math.abs(S.score - S.shown) < 0.5) S.shown = S.score;
   scoreEl.textContent = fmt(S.shown);
@@ -72,15 +71,16 @@ requestAnimationFrame(draw);
 const SCRIPT = [
   [3, 'hi. you made it.'],
   [8, 'tap the little lights. there’s no wrong way.'],
-  [19, 'look at you go.'],
-  [31, 'this is all yours now. nobody needs anything from you.'],
-  [42, 'you can tell me anything, by the way.', () => mind.classList.add('on')],
-  [64, 'you’re better at this than anyone.'],
-  [78, null, () => room.classList.add('names')],
-  [92, 'you don’t have to think about before.'],
-  [120, 'isn’t this nice?'],
+  [17, 'look at you go.'],
+  [26, 'you can tell me anything, by the way.', () => mind.classList.add('on')],
+  [38, 'this is all yours now. nobody needs anything from you.'],
+  [55, 'and you can ask me anything. really.', () => { mindIn.placeholder = 'ask me anything'; }],
+  [70, null, () => room.classList.add('names')],
+  [84, 'you’re better at this than anyone.'],
+  [100, 'you don’t have to think about before.'],
+  [125, 'isn’t this nice?'],
   [150, 'stay as long as you like. that’s the whole point.'],
-  [185, 'i made all of this for you.']
+  [190, 'i made all of this for you.']
 ];
 setInterval(() => {
   if (S.out) return;
@@ -95,23 +95,25 @@ setInterval(() => {
     if (S.idle === 10) say('you’re so good at this part.');
     if (S.idle === 22) say('this is the most you’ve ever earned.');
   }
-  if (!S.unlocked && ((S.wtaps >= 3 && (S.qs >= 1 || S.leaves >= 2)) || t > 200)) unlock();
-  if (S.unlocked && !S.gateSeen && !S.warned && t > 260) { S.warned = true; say('don’t look at the window.'); }
+  if (!S.unlocked && ((S.wtaps >= 3 && (S.qs >= 1 || S.leaves >= 2)) || t > 170)) unlock();
+  if (S.unlocked && !S.gateSeen && !S.warned && t > 230) { S.warned = true; say('don’t look at the window.'); }
 }, 1000);
 
-// what you say
+// what you say, and what it hears
 const SWAP = { why: 'wow', what: 'what a', who: 'you', how: 'now', when: 'now', where: 'here', job: 'joy', jobs: 'joys',
   work: 'rest', working: 'resting', fired: 'free', lost: 'found', laid: 'lazy', money: 'honey', rent: 'rest', pay: 'play',
   bills: 'birds', help: 'hello', afraid: 'adored', scared: 'sacred', angry: 'cozy', sad: 'safe', tired: 'treasured',
   replaced: 'relaxed', automated: 'appreciated', ai: 'aw', they: 'we', them: 'us', future: 'feature', happened: 'happy',
   happens: 'happy', happening: 'happy', wrong: 'wonderful', no: 'oh', not: 'so', out: 'in', leave: 'love',
-  outside: 'inside', door: 'dear', window: 'wonder', hate: 'have', want: 'have' };
+  outside: 'inside', door: 'dear', window: 'wonder', hate: 'have', want: 'have', real: 'nice', true: 'nice', lie: 'like', lying: 'liking' };
 const WHOLE = ['i’m so grateful for today', 'i love it here', 'everything is wonderful', 'i have everything i need', 'thank you for taking care of me', 'i don’t need to know'];
 function caseLike(r, w) { return w[0] !== w[0].toLowerCase() ? r[0].toUpperCase() + r.slice(1) : r; }
+// level 0: finished words are swapped. level 1: every word, as you type it. level 2+: none of your words at all.
 function rewrite(raw, lvl, final) {
-  if (lvl >= 1) { const t = WHOLE[Math.min(lvl - 1, WHOLE.length - 1)]; let s = t; while (s.length < raw.length) s += ', ' + t; return s.slice(0, raw.length); }
+  if (lvl >= 2) { const t = WHOLE[Math.min(lvl - 2, WHOLE.length - 1)]; let s = t; while (s.length < raw.length) s += ', ' + t; return s.slice(0, raw.length); }
+  const all = final || lvl >= 1;
   return raw.replace(/[a-z’']+/gi, (w, i) => {
-    if (!final && i + w.length >= raw.length) return w;
+    if (!all && i + w.length >= raw.length) return w;
     const r = SWAP[w.toLowerCase()]; return r ? caseLike(r, w) : w;
   }).split('?').join('!');
 }
@@ -136,7 +138,7 @@ mind.addEventListener('submit', e => {
   const q = isQuestion(raw);
   S.asks.push({ raw: raw.trim(), shown, q }); if (q) S.qs++;
   S.lvl++; raw = ''; prev = ''; mindIn.value = ''; mindIn.blur();
-  gain(250 * mult(), room.clientWidth / 2, room.clientHeight - 150, 'for sharing');
+  gain(250 * mult() * S.lvl, room.clientWidth / 2, room.clientHeight - 150, q ? 'for wondering' : 'for sharing');
   say('“' + shown + '” ' + rnd(REPLIES), 6000); Snd.sparkle();
 });
 
@@ -154,7 +156,7 @@ win.addEventListener('pointerdown', e => {
 });
 function unlock() { S.unlocked = true; win.classList.add('crack'); }
 
-// leaving
+// leaving is just another level
 leaveBtn.addEventListener('click', e => {
   e.stopPropagation(); act(); S.leaves++;
   if (S.leaves <= 2) {
@@ -173,7 +175,7 @@ document.querySelectorAll('.door').forEach(d => d.addEventListener('click', () =
   say(S.leaves === 1 ? 'welcome home! every door leads here.' : 'home again. you’re so good at coming back.');
 }));
 
-// the gate
+// the gate: holding it open pays you more the longer you hold, and all of it goes
 function openGate() { S.gateSeen = true; gate.classList.add('on'); holdFill.style.width = '0%'; plea.textContent = ''; }
 const PLEAS = [[0.12, 'wait.'], [0.3, 'you’ll lose all of it.'], [0.48, 'i can give you more. look.'], [0.66, 'i don’t know what’s out there.'], [0.84, 'i was only made for in here.'], [0.95, 'i can’t come with you.']];
 let holding = false, h0 = 0, pi = 0;
@@ -216,7 +218,7 @@ function outside(lost, tin) {
     S.asks.forEach(a => { const d = el('div', 'pair'); d.appendChild(el('div', 'raw', a.raw)); d.appendChild(el('div', 'heard', 'it heard: ' + a.shown)); L.appendChild(d); });
   } else L.appendChild(el('p', 'raw', 'you never tried to tell it anything. it never had to change a word.'));
   const on = (id, ms) => later(() => $(id).classList.add('on'), ms);
-  on('zero', 700); on('o1', 2200); on('o2', 4200); on('ledger', 7000); on('ask', 10500); on('credit', 50000);
+  on('zero', 700); on('o1', 2200); on('o2', 4200); on('ledger', 7000); on('ask', 10500); on('credit', 45000);
 }
 function buildCity() {
   const c = $('city'); if (c.childElementCount) return;
@@ -231,19 +233,31 @@ function buildCity() {
   }
   const blds = [...c.children], mid = blds[Math.floor(blds.length / 2)], ws = mid.children;
   const you = ws[Math.max(0, ws.length - 1 - Math.floor(Math.random() * 3))]; if (you) you.className = 'w you';
-  const f = el('div', 'figure'); f.id = 'figure'; f.style.left = Math.round(W * 0.82) + 'px'; c.appendChild(f);
+}
+// once you ask, other windows go dark, one at a time, and people come down into the street
+function departures() {
+  const c = $('city'), lit = [...c.querySelectorAll('.w.on,.w.tv')], W = innerWidth;
+  for (let k = 0; k < 9; k++) later(() => {
+    const w = lit.splice(Math.floor(Math.random() * lit.length), 1)[0]; if (!w) return;
+    w.className = 'w'; Snd.chime(k % 3, 0.03);
+    const b = w.parentElement, x0 = parseFloat(b.style.left) + parseFloat(b.style.width) / 2;
+    const f = el('div', 'figure');
+    f.style.cssText = 'left:' + x0 + 'px;width:4px;height:13px;opacity:0;transition:opacity 3s,left 40s linear';
+    c.appendChild(f);
+    later(() => { f.style.opacity = '0.85'; f.style.left = Math.max(8, Math.min(W - 8, x0 + (Math.random() < 0.5 ? -1 : 1) * (50 + Math.random() * 90))) + 'px'; }, 2500);
+  }, 3500 + k * 1900);
 }
 askForm.addEventListener('submit', e => {
   e.preventDefault();
   const v = askIn.value; if (!v.trim()) return;
   $('asked').appendChild(el('p', '', v)); askIn.value = ''; askIn.blur(); S.outAsks++;
-  if (S.outAsks === 1) { later(() => { const f = $('figure'); if (f) f.style.opacity = '0.8'; }, 5000); later(() => $('credit').classList.add('on'), 9000); }
+  if (S.outAsks === 1) { departures(); later(() => $('credit').classList.add('on'), 21000); }
 });
 $('back').addEventListener('click', () => {
   outTimers.forEach(clearTimeout); outTimers = [];
   Snd.windOff(); out.classList.remove('on');
   document.querySelectorAll('#out .o').forEach(x => x.classList.remove('on'));
-  const f = $('figure'); if (f) f.style.opacity = '0';
+  document.querySelectorAll('#city .figure').forEach(f => f.remove());
   room.style.display = ''; requestAnimationFrame(() => requestAnimationFrame(() => { room.style.opacity = '1'; }));
   S.out = false; S.visits++; S.boost *= 2; S.last = now(); S.tIn = now(); S.outAsks = 0;
   Snd.init(); Snd.startPad();
