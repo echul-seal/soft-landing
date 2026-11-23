@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b0f17">
+<title>Soft Landing</title>
+<meta name="description" content="A short game about being looked after. Made by Seal.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div id="hud" class="mono"></div>
+  <div id="counter" class="serif"></div>
+  <div id="radio" class="mono"></div>
+  <div id="voice" class="serif"></div>
+  <div id="hint" class="mono"></div>
+  <button id="mic" class="mono" aria-label="hold to speak"><span class="dot"></span><span class="lbl">hold to speak</span></button>
+  <form id="ask" autocomplete="off"><input id="askIn" class="serif" type="text" maxlength="40" autocapitalize="off" autocomplete="off" spellcheck="false"><div id="askGhost" class="serif"></div></form>
+  <div id="card"></div>
+  <button id="mute" class="mono" aria-label="sound">sound on</button>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
