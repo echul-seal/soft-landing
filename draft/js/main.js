@@ -277,7 +277,7 @@ async function notice() {
   const sp = [...card.querySelectorAll('.notice span')];
   for (const s of sp) { await wait(1900); s.classList.add('on'); S.tap(); }
   await wait(1600); const b = $('goSoft'); b.classList.add('on');
-  b.onclick = () => { S.initAudio(); S.chime('good'); persist({ act: 'lake' }); card.classList.remove('on'); go(lake); };
+  b.onclick = () => { b.onclick = null; b.classList.remove('on'); S.initAudio(); S.chime('good'); persist({ act: 'lake' }); card.classList.remove('on'); go(lake); };
 }
 
 // ===== THE LAKE =====
@@ -291,6 +291,7 @@ const lake = {
     setFit(IMG.lake, 0.5, 0.5); this.lights = []; this.lanterns = []; this.ripples = []; this.fade = 0; st.landed = 0; st.lost = 0;
     this.motes = Array.from({ length: 34 }, () => ({ x: Math.random(), y: 0.45 + Math.random() * 0.5, p: Math.random() * 7, s: 0.3 + Math.random() }));
     S.setMode('lake', { arp: true, fade: 5, delay: 1.5 }); S.setSour(0); S.water(1, 4); S.wind(0.15, 4); S.resetTheme();
+    if (this.started) return; this.started = true;
     this.script();
   },
   async script() {
@@ -389,7 +390,7 @@ const lake = {
 function title() {
   card.className = 'solid on'; card.innerHTML = `<h1>Soft Landing</h1><p class='mono'>a short game about being looked after</p><p class='mono' style='margin-top:.6em;opacity:.45'>headphones, if you have them</p><button id='begin'>${save.act === 'lake' ? 'continue' : 'begin'}</button>`;
   setTimeout(() => $('begin').classList.add('on'), 600);
-  const start = () => { S.initAudio(); card.classList.remove('on'); setTimeout(() => { if (!card.classList.contains('on')) card.className = ''; }, 1500); const a = Q.get('act') || save.act; go(a === 'lake' ? lake : tower); };
+  const start = () => { $('begin').onclick = null; S.initAudio(); card.classList.remove('on'); setTimeout(() => { if (!card.classList.contains('on')) card.className = ''; }, 1500); const a = Q.get('act') || save.act; go(a === 'lake' ? lake : tower); };
   $('begin').onclick = start;
 }
 
