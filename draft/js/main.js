@@ -150,16 +150,30 @@ function drawRain(dt, wind, a = 0.3) {
 }
 
 // ===== TOWER =====
+// You never touch the plane. You hold the line open and talk. He flies, a beat late, and cannot see what the wind is doing to him.
+const SINK_MAX = 0.032, SINK_SOFT = 0.02, SINK_WARN = 0.027, OFF_MAX = 1.15, TH = 44;
+const FPM = v => Math.round(Math.max(0, v) * 3000) * 10;
+const CALLS = {
+  left: ['Come left.', 'Left a little more.', 'Left again.'], right: ['Come right.', 'Right a little more.', 'Right again.'],
+  up: ['Ease it.', 'Slower. Hold her up.', 'Ease it again.'], down: ['Bring it down.', 'Lower.', 'Down a little more.'],
+};
+const OPP = { left: 'right', right: 'left', up: 'down', down: 'up' };
 const tower = {
-  name: 'tower', phase: 'talk', L: null, windT: 0, gust: 0, lineT: 0, said: 0, trail: [],
-  env: {
-    g: 0.05, k: 2.6, fmax: 0.13, lift: 0.0415, drag: 0.5, dragHeld: 1.1,
-    wind(L) { return tower.windNow * (0.5 + 0.9 * clamp((L.y - st.h * 0.1) / (st.h * 0.5), 0, 1)); },
+  name: 'tower', phase: 'talk', L: null, windT: 0, gust: 0, gustS: 0, pend: 0, trail: [], approach: 1, why: '', dev: 0, alt: 1, beepT: 0, warned: 0,
+  keyed: false, ptrHeld: false, A: { x: 0, y: 0 }, armed: true, rep: 0, hot: null, q: [], stress: 0.3, off: 0, cmd: 0, sinkT: 0.022, copy: null, alone: 0, aloneN: 0, lastCall: null, calls: 0, wph: Math.random() * 7,
+  windNow: 0.01,
+  setHud() {
+    hud.innerHTML = 'HALDEN TOWER &nbsp;·&nbsp; 02:14<br>RWY 27 &nbsp;·&nbsp; WIND 310 / 22 G 34' + (this.approach > 1 ? `<br><span style='color:#ffb070'>APPROACH ${this.approach} &nbsp;·&nbsp; LAST: ${this.why}</span>` : '');
   },
-  windNow: 0.02,
+  geom() { const T = P(0.46, 0.665); this.T = T; this.half = 0.062 * fit.iw * fit.s; this.S0 = { x: clamp(T.x + st.h * 0.2, 40, st.w - 40), y: st.h * 0.09 }; },
   enter() {
-    setFit(IMG.tower, 0.46, 0.52); hud.innerHTML = 'HALDEN TOWER &nbsp;·&nbsp; 02:14<br>RWY 27 &nbsp;·&nbsp; WIND 310 / 22 G 34'; hud.style.opacity = 1;
+    setFit(IMG.tower, 0.46, 0.52); this.setHud(); hud.style.opacity = 1;
     S.setMode('tower'); S.rain(1); S.wind(0.5);
+    if (!this.keys) {
+      this.keys = true; const map = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', a: 'left', d: 'right', w: 'up', s: 'down' };
+      addEventListener('keydown', e => { if (scene !== tower || this.phase !== 'guide') return; if (e.code === 'Space') { this.kbSpace = true; e.preventDefault(); return; } const d = map[e.key]; if (d && !e.repeat) { e.preventDefault(); this.kbHold = this.windT + 1.6; this.call(d); } });
+      addEventListener('keyup', e => { if (e.code === 'Space') this.kbSpace = false; });
+    }
     this.script();
   },
   async script() {
@@ -168,64 +182,122 @@ const tower = {
     setHint('hold the key to speak. don’t let go.');
     await holdSpeak('Meridian two one four, Halden Tower. I have you.');
     await heard('MERIDIAN 214', 'Crosswind’s throwing us around. I can’t see the field.');
-    await holdSpeak('You don’t need to see it. Tell me what you see.');
+    await holdSpeak('You don’t need to see it. I can. Do what I say.');
     await heard('MERIDIAN 214', '…Rain. One light. Could be yours.');
-    await holdSpeak('It’s mine. Stay with me.');
+    await holdSpeak('It’s mine. I’ll talk you down. Stay on my voice.');
     await wait(700);
     this.spawn(); this.phase = 'guide';
-    setHint('hold the light. bring it down slow. it cannot climb.');
+    setHint('press and hold anywhere to keep the line open. slide toward a call, then back.');
   },
   spawn() {
-    const T = P(0.46, 0.665);
-    this.T = T; this.half = 0.062 * fit.iw * fit.s;
-    this.L = makeLight({ x: clamp(T.x + st.h * 0.2, 40, st.w - 40), y: st.h * 0.09, vx: -0.02, vy: 0.03 });
-    this.trail = []; this.lineT = 2; S.setOpts({ tension: 0.6 });
+    this.geom(); const S0 = this.S0;
+    if (!this.L) this.L = makeLight({});
+    Object.assign(this.L, { x: S0.x, y: S0.y, vx: 0, vy: 0.022, held: false, landed: false, far: 0 });
+    this.trail = []; this.warned = 0; this.dev = 0; this.off = 0; this.cmd = 0; this.sinkT = 0.022; this.q = []; this.copy = null; this.lastCall = null;
+    this.gust = 0; this.pend = 0; this.gustEnd = 0; this.nextGust = this.windT + 3.2; this.stress = Math.min(this.stress, 0.4); this.alone = 0; this.aloneSaid = false; S.setOpts({ tension: 0.6 });
   },
-  down() { const L = this.L; if (this.phase !== 'guide' || !L) return; if (Math.hypot(st.ptr.x - L.x, st.ptr.y - L.y) < Math.max(90, st.h * 0.16)) { L.held = true; S.guideTone(true); S.radioClick(true); setHint(''); } },
-  up() { const L = this.L; if (L && L.held) { L.held = false; S.guideTone(false); S.radioClick(false); if (this.phase === 'guide' && L.y < this.T.y - st.h * 0.08) this.pilot('Tower? Tower, say again—'); } },
-  async pilot(t) { if (this.busy) return; this.busy = true; await heard('MERIDIAN 214', t, 40); this.busy = false; },
+  down() { this.ptrHeld = true; this.A = { x: st.ptr.x, y: st.ptr.y }; this.armed = true; this.hot = null; },
+  up() { this.ptrHeld = false; this.hot = null; },
+  unkey() { if (this.keyed) { this.keyed = false; S.guideTone(false); S.radioClick(false); S.staticHiss(0); } },
+  async pilot(t) { if (this.busy) return; this.busy = true; await heard('MERIDIAN 214', t, 40); this.busy = false; if (this.keyed) S.staticHiss(0.5); },
   say(t) { const tx = radioLine('HALDEN TOWER · YOU', true); tx.textContent = t; S.typeKey(); st.log.push('YOU: ' + t); },
+  // a call goes out now; he acts on it a beat later, more or less as asked
+  call(dir) {
+    const n = this.windT, last = this.lastCall, rpt = last && last.dir === dir && n - last.t < 4 ? Math.min(2, last.n + 1) : 0;
+    this.say(CALLS[dir][rpt]); this.calls++; S.radioClick(true);
+    if (last && last.dir === OPP[dir] && n - last.t < 0.9) { this.stress = clamp(this.stress + 0.25, 0, 1); this.q = []; this.lastCall = { dir, t: n, n: 0 }; this.pilot('Say again? Which way?'); return; }
+    this.lastCall = { dir, t: n, n: rpt };
+    this.q.push({ dir, at: n + 0.5 + 0.6 * this.stress + rnd(0, 0.15) });
+  },
+  apply(c) {
+    const e = 1 + rnd(-0.22, 0.22) * (1 + this.stress * 1.5), step = this.half * 0.85;
+    if (c.dir === 'left') this.cmd -= step * e; else if (c.dir === 'right') this.cmd += step * e;
+    else if (c.dir === 'up') this.sinkT = Math.max(0.009, this.sinkT - 0.0075 * e); else this.sinkT = Math.min(0.05, this.sinkT + 0.0075 * e);
+    this.copy = { t: this.windT, text: { left: 'LEFT', right: 'RIGHT', up: 'EASING', down: 'DESCENDING' }[c.dir] }; S.tap(3);
+  },
+  input(dt) {
+    if (!this.ptrHeld) { this.hot = null; return; }
+    const dx = st.ptr.x - this.A.x, dy = st.ptr.y - this.A.y, m = Math.hypot(dx, dy);
+    const dir = m < TH ? null : Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down');
+    this.hot = dir;
+    if (!dir) { if (m < 24) this.armed = true; return; }
+    this.rep -= dt;
+    if (this.armed || this.rep <= 0) { this.armed = false; this.rep = 1.05; this.call(dir); }
+  },
+  circuit() { const L = this.L; this.circ = { k: 0, x: L.x, y: L.y }; L.vx = 0; L.vy = 0; return new Promise(r => { this.circDone = r; }); },
   update(dt) {
-    const L = this.L; this.windT += dt;
-    // wind: slow swing plus gusts that announce themselves in the rain
-    const base = 0.022 + 0.012 * Math.sin(this.windT * 0.37);
-    if (this.phase === 'guide' && this.windT > (this.nextGust || 5)) { this.gust = (Math.random() < 0.75 ? 1 : -0.7) * rnd(0.05, 0.085); this.gustEnd = this.windT + rnd(1.2, 2.2); this.nextGust = this.windT + rnd(3.5, 6); S.wind(1.4, 0.4); }
-    if (this.gustEnd && this.windT > this.gustEnd) { this.gust = 0; this.gustEnd = 0; S.wind(0.5, 1.5); }
-    this.gustS = lerp(this.gustS || 0, this.gust, 1 - Math.pow(0.02, dt));
-    this.windNow = base + this.gustS;
-    if (!L || this.phase !== 'guide') return;
-    stepLight(L, dt, this.env);
-    L.x = clamp(L.x, 10, st.w - 10);
-    const alt = clamp((this.T.y - L.y) / (this.T.y - st.h * 0.09), 0, 1);
-    S.guideSet(alt, clamp(L.strain * 0.6 + Math.abs(this.gustS) * 8, 0, 1));
-    if (st.t % 0.05 < dt) { this.trail.push({ x: L.x, y: L.y }); if (this.trail.length > 40) this.trail.shift(); }
-    // your voice, while you hold: it says what the light needs
-    this.lineT -= dt;
-    if (L.held && this.lineT <= 0 && !this.busy) {
-      const off = (L.x - this.T.x) / this.half; let t;
-      if (L.vy > 0.062) t = ['Ease it. You’re dropping.', 'Slower. Slower.'][this.said % 2];
-      else if (off > 1.1) t = ['Come left.', 'Left a little more.'][this.said % 2];
-      else if (off < -1.1) t = ['Come right.', 'Right. Into the wind.'][this.said % 2];
-      else if (Math.abs(this.gustS) > 0.03) t = 'Hold it. Let the gust go by.';
-      else t = alt < 0.3 ? 'I have you.' : ['That’s it.', 'Good. Stay with me.', 'Just like that.'][this.said % 3];
-      this.say(t); this.said++; this.lineT = 2.7;
+    const L = this.L, H = st.h; this.windT += dt;
+    // wind: a slow swing, and gusts you can see coming in the rain a second before they land
+    const base = 0.013 * Math.sin(this.windT * 0.33 + this.wph) + 0.004;
+    if (this.phase === 'guide') {
+      if (!this.pend && !this.gust && this.windT > this.nextGust) { this.pend = (Math.random() < 0.6 ? 1 : -1) * rnd(0.04, 0.07); this.pendAt = this.windT + 1.1; S.wind(1.4, 0.4); }
+      if (this.pend && this.windT > this.pendAt) { this.gust = this.pend; this.pend = 0; this.gustEnd = this.windT + rnd(1.3, 2); }
     }
-    if (L.y >= this.T.y) this.touch();
+    if (this.gust && this.windT > this.gustEnd) { this.gust = 0; this.nextGust = this.windT + rnd(2.6, 4.6); S.wind(0.5, 1.5); }
+    this.gustS = lerp(this.gustS, this.gust, 1 - Math.pow(0.02, dt));
+    this.windNow = base + this.gustS;
+    // the go-around: it climbs out along the runway, turns, and comes back to the top of the path
+    if (L && this.phase === 'around' && this.circ) {
+      const c = this.circ, S0 = this.S0; c.k = Math.min(1, c.k + dt / (7.5 * FAST));
+      const ax = Math.max(24, c.x - H * 0.34), ay = Math.min(c.y - H * 0.4, H * 0.22);
+      if (c.k < 0.38) { const a = c.k / 0.38; L.x = lerp(c.x, ax, a); L.y = lerp(c.y, ay, a * a * (3 - 2 * a)); }
+      else { const b = (c.k - 0.38) / 0.62, e = b * b * (3 - 2 * b); L.x = lerp(ax, S0.x, e); L.y = lerp(ay, S0.y, e) - Math.sin(b * Math.PI) * H * 0.05; }
+      L.far = Math.sin(c.k * Math.PI);
+      if (st.t % 0.05 < dt) { this.trail.push({ x: L.x, y: L.y }); if (this.trail.length > 60) this.trail.shift(); }
+      if (c.k >= 1) { this.circ = null; L.far = 0; this.circDone(); }
+      return;
+    }
+    if (!L || this.phase !== 'guide') return;
+    const T = this.T, S0 = this.S0;
+    // the line: open while you hold. he is steadier with you on it.
+    const k0 = this.ptrHeld || this.kbSpace || this.windT < (this.kbHold || 0);
+    if (k0 !== this.keyed) { this.keyed = k0; S.guideTone(k0); S.radioClick(k0); S.staticHiss(k0 ? 0.5 : 0); if (k0) setHint(''); }
+    this.stress = clamp(this.stress + (this.keyed ? -0.16 : 0.2) * dt, 0, 1);
+    if (this.keyed) { this.alone = 0; this.aloneSaid = false; }
+    else { this.alone += dt; if (this.alone > 1.6 && !this.aloneSaid && !this.busy) { this.aloneSaid = true; this.pilot(['Tower? Are you there?', 'Tower, I’ve lost you—', 'Say something. Anything.'][this.aloneN++ % 3]); } }
+    this.input(dt);
+    while (this.q.length && this.q[0].at <= this.windT) this.apply(this.q.shift());
+    // he flies what he was last told. the wind moves him and he cannot see it.
+    const wob = Math.sin(this.windT * 2.3) * 0.5 + Math.sin(this.windT * 3.7 + 1) * 0.5;
+    this.cmd += (this.windNow * 0.85 + wob * 0.012 * this.stress) * H * dt;
+    this.off += (this.cmd - this.off) * (1 - Math.exp(-dt / 0.42));
+    this.sinkT = Math.min(0.05, this.sinkT + (0.0007 + 0.002 * this.stress) * dt);
+    L.vy += (this.sinkT + Math.abs(this.gustS) * 0.12 - L.vy) * (1 - Math.exp(-dt / 0.5));
+    L.y += L.vy * H * dt;
+    const k = clamp((L.y - S0.y) / (T.y - S0.y), 0, 1);
+    L.x = lerp(S0.x, T.x, k) + this.off;
+    this.alt = clamp((T.y - L.y) / (T.y - S0.y), 0, 1); const alt = this.alt;
+    this.dev = this.off / (this.half * lerp(0.55, 1, k)); this.gx = T.x + this.off; const dev = this.dev;
+    S.guideSet(alt, clamp(this.stress * 0.6 + Math.abs(this.gustS) * 8, 0, 1));
+    if (st.t % 0.05 < dt) { this.trail.push({ x: L.x, y: L.y }); if (this.trail.length > 40) this.trail.shift(); }
+    // sink warning: ticks that quicken as the descent gets dangerous
+    if (L.vy > SINK_WARN && alt < 0.6) { this.beepT -= dt; if (this.beepT <= 0) { S.tap(L.vy > SINK_MAX ? 5 : 2); this.beepT = lerp(0.36, 0.11, clamp((L.vy - SINK_WARN) / 0.01, 0, 1)); } } else this.beepT = 0;
+    if (alt < 0.45 && alt > 0.08 && !this.busy) {
+      if (L.vy > SINK_MAX && !(this.warned & 1)) { this.warned |= 1; this.pilot('We’re coming down hard, Tower—'); }
+      else if (Math.abs(dev) > 1.35 && !(this.warned & 2)) { this.warned |= 2; this.pilot('I can’t find your lights. Which way?'); }
+    }
+    if (L.y >= T.y || (Math.abs(dev) > 3.2 && alt < 0.7)) this.touch();
   },
   async touch() {
-    const L = this.L, off = Math.abs(L.x - this.T.x) / this.half, sink = L.vy; this.phase = 'down'; L.held = false; S.guideTone(false);
-    st.log.push(`TOUCH sink=${sink.toFixed(3)} off=${off.toFixed(2)}`);
-    if (off > 1.25 || sink > 0.085) { // not this time
-      st.goArounds++; S.thud(0.5); S.glitch(0.2);
-      this.phase = 'climb'; const L0 = { x: L.x, y: L.y }; const t0 = performance.now();
-      const climb = () => { const k = (performance.now() - t0) / (2600 * FAST); L.x = L0.x - k * st.h * 0.25; L.y = L0.y - k * k * st.h * 0.6; if (k < 1) requestAnimationFrame(climb); }; climb();
-      await heard('MERIDIAN 214', off > 1.25 ? 'That’s grass— going around. I don’t know how many of these I have.' : 'Too fast, too fast— going around.');
-      await holdSpeak(st.goArounds > 1 ? 'You have one more. I’m not going anywhere.' : 'You have it. Come back to me. Slower this time.');
-      this.spawn(); this.phase = 'guide'; return;
+    const L = this.L, off = this.off / this.half, sink = L.vy; this.phase = 'down'; this.unkey(); this.hot = null;
+    st.log.push(`TOUCH sink=${sink.toFixed(3)} off=${off.toFixed(2)} calls=${this.calls}`);
+    const hard = sink > SINK_MAX, wide = Math.abs(off) > OFF_MAX;
+    if (hard || wide) { // not this time: say why, show the way round, try again
+      st.goArounds++; this.approach++; S.thud(hard && !wide ? 0.6 : 0.3); S.glitch(0.2);
+      this.why = wide ? `OFF THE RUNWAY, ${off > 0 ? 'RIGHT' : 'LEFT'}` : `TOO FAST, ${FPM(sink)} DOWN, LIMIT ${FPM(SINK_MAX)}`;
+      this.setHud(); st.log.push('GO-AROUND ' + this.why); setHint('');
+      const round = this.circuit(); this.phase = 'around';
+      await heard('MERIDIAN 214', wide ? `We’re ${off > 0 ? 'right' : 'left'} of the runway lights. That’s grass. Going around.` : 'Too fast. We hit hard and bounced. Going around.');
+      await holdSpeak(st.goArounds > 1 ? 'Climb. Come round again. I’m not going anywhere.' : wide ? 'Climb. Come round the field. I’ll call it sooner.' : 'Climb. Come round again. I’ll bring you down slower.');
+      await round;
+      await heard('MERIDIAN 214', st.goArounds > 1 ? 'Turning back in. I don’t know how many of these I have.' : 'Turning back in. I see your light again.', 40);
+      this.spawn(); this.phase = 'guide';
+      setHint(wide ? 'he answers late. call before the gust lands, not after.' : 'he sinks faster the longer it goes. call “ease it” before the ground.');
+      return;
     }
-    st.towerSink = sink; L.landed = true; L.vy = 0; L.vx = 0.06; S.thud(sink > 0.05 ? 0.45 : 0.2); S.setOpts({ tension: 0 }); S.wind(0.3, 3); setHint('');
+    st.towerSink = sink; L.landed = true; L.vy = 0; L.vx = -0.06; S.thud(sink > SINK_SOFT ? 0.45 : 0.2); S.setOpts({ tension: 0 }); S.wind(0.3, 3); setHint('');
     await wait(3200);
-    await heard('MERIDIAN 214', sink > 0.05 ? 'We’re down. Firm, but we’re down. Everyone’s down.' : 'We’re down. …I didn’t even feel it. Everyone’s down.', 26);
+    await heard('MERIDIAN 214', sink > SINK_SOFT ? 'We’re down. Firm, but we’re down. Everyone’s down.' : 'We’re down. …I didn’t even feel it. Everyone’s down.', 26);
     await wait(900);
     await heard('MERIDIAN 214', 'Thank you. Whoever you are.', 22);
     await holdSpeak('Ines. Goodnight, two one four.');
@@ -233,35 +305,86 @@ const tower = {
     notice();
   },
   draw(dt) {
-    backdrop(IMG.tower); const L = this.L;
-    if (this.T) {
-      const T = this.T, on = L && Math.abs(L.x - T.x) < this.half; g.save(); g.globalCompositeOperation = 'lighter';
-      glow(T.x, T.y, this.half * 2.2, '255,170,80', 0.07 + 0.03 * Math.sin(st.t * 2));
-      g.strokeStyle = `rgba(255,${on ? 215 : 160},${on ? 150 : 90},${on ? 0.8 : 0.35})`; g.lineWidth = 1.5;
-      for (const s of [-1, 1]) { g.beginPath(); g.moveTo(T.x + s * this.half, T.y - 10); g.lineTo(T.x + s * this.half, T.y + 4); g.lineTo(T.x + s * (this.half - 12), T.y + 4); g.stroke(); }
+    backdrop(IMG.tower); const L = this.L, T = this.T, guiding = this.phase === 'guide', around = this.phase === 'around';
+    const onPath = guiding && Math.abs(this.dev) <= 1, MONO = 'ui-monospace, Menlo, Consolas, monospace';
+    if (T) {
+      const half = this.half, S0 = this.S0, zc = onPath ? '120,255,170' : '90,215,150';
+      g.save(); g.globalCompositeOperation = 'lighter';
+      glow(T.x, T.y, half * 2.2, '255,170,80', 0.07 + 0.03 * Math.sin(st.t * 2));
+      // the green bar: anywhere between the brackets is runway
+      for (let i = 0; i <= 8; i++) glow(T.x - half + i * half / 4, T.y + 2, onPath ? 8 : 6, zc, onPath ? 0.85 : 0.5);
+      g.strokeStyle = `rgba(${zc},${onPath ? 0.9 : 0.55})`; g.lineWidth = 1.5;
+      for (const s of [-1, 1]) { g.beginPath(); g.moveTo(T.x + s * half, T.y - 12); g.lineTo(T.x + s * half, T.y + 5); g.lineTo(T.x + s * (half - 12), T.y + 5); g.stroke(); }
+      if (guiding || around) {
+        // the path down: rungs of light, with a pulse running toward the runway
+        const c = '160,220,230', N = 11, run = Math.floor(st.t * 9) % (N + 4);
+        g.strokeStyle = `rgba(${c},0.12)`; g.lineWidth = 1;
+        for (const s of [-1, 1]) { g.beginPath(); g.moveTo(S0.x + s * half * 0.55, S0.y); g.lineTo(T.x + s * half, T.y); g.stroke(); }
+        for (let i = 0; i < N; i++) { const k = (i + 0.5) / N, x = lerp(S0.x, T.x, k), y = lerp(S0.y, T.y, k), w = half * lerp(0.55, 1, k), hot = i === run; for (const s of [-1, 0, 1]) glow(x + s * w, y, hot ? 6 : 3.5, c, hot ? 0.8 : (s ? 0.3 : 0.16)); }
+      }
       g.restore();
     }
     if (L) {
-      const alt = this.T ? clamp((this.T.y - L.y) / (this.T.y - st.h * 0.09), 0, 1) : 1, r = lerp(30, 9, alt) * (st.h / 800 + 0.4) * 0.5;
+      const alt = guiding ? this.alt : (L.landed ? 0 : 1), r = lerp(30, 9, alt) * (st.h / 800 + 0.4) * 0.5 * (1 - 0.45 * (L.far || 0));
       if (L.landed) { L.x += L.vx * st.h * dt; L.vx *= 1 - 0.5 * dt; }
+      const jx = guiding ? Math.sin(st.t * 31) * this.stress * 2.5 : 0, jy = guiding ? Math.sin(st.t * 23 + 1) * this.stress * 2 : 0, X = L.x + jx, Y = L.y + jy;
       g.save(); g.globalCompositeOperation = 'lighter';
-      this.trail.forEach((p, i) => glow(p.x, p.y, r * 0.5, '255,220,170', 0.02 * i / this.trail.length));
-      const fast = clamp((L.vy - 0.035) / 0.05, 0, 1), col = `255,${Math.round(236 - fast * 120)},${Math.round(200 - fast * 150)}`;
-      glow(L.x, L.y, r * 5, col, 0.16); glow(L.x, L.y, r * 1.6, col, 0.9);
-      g.fillStyle = `rgba(${col},0.12)`; g.fillRect(L.x - r * 9, L.y - 0.8, r * 18, 1.6);
+      this.trail.forEach((p, i) => glow(p.x, p.y, r * 0.5, '255,220,170', (around ? 0.05 : 0.02) * i / this.trail.length));
+      const fast = clamp((L.vy - SINK_SOFT) / (SINK_MAX - SINK_SOFT), 0, 1), col = `255,${Math.round(236 - fast * 120)},${Math.round(200 - fast * 150)}`;
+      glow(X, Y, r * 5, col, 0.16); glow(X, Y, r * 1.6, col, 0.9);
+      g.fillStyle = `rgba(${col},0.12)`; g.fillRect(X - r * 9, Y - 0.8, r * 18, 1.6);
       // red and green wingtips, the only colour up there
-      glow(L.x - r * 1.5, L.y + 1, r * 0.7, '255,60,50', 0.5); glow(L.x + r * 1.5, L.y + 1, r * 0.7, '70,255,150', 0.4);
-      // its light on the wet runway before it arrives
-      if (this.T && !L.landed) glow(L.x, this.T.y + 6, lerp(60, 14, alt) * (1 - alt * 0.3), '255,220,170', 0.1 * (1 - alt));
+      glow(X - r * 1.5, Y + 1, r * 0.7, '255,60,50', 0.5); glow(X + r * 1.5, Y + 1, r * 0.7, '70,255,150', 0.4);
+      if (T && guiding) { // where this line of descent puts him down
+        const gc = onPath ? '120,255,170' : '255,170,90', gx = this.gx === undefined ? T.x : this.gx;
+        glow(gx, T.y + 6, lerp(60, 14, alt) * (1 - alt * 0.3), '255,220,170', 0.1 * (1 - alt));
+        g.strokeStyle = `rgba(${gc},0.42)`; g.lineWidth = 1.2; g.setLineDash([3, 8]); g.beginPath(); g.moveTo(X, Y + r * 2); g.lineTo(gx, T.y - 6); g.stroke(); g.setLineDash([]);
+        glow(gx, T.y + 2, 13, gc, 0.9); g.fillStyle = `rgba(${gc},0.9)`; g.beginPath(); g.moveTo(gx, T.y - 3); g.lineTo(gx - 6, T.y - 13); g.lineTo(gx + 6, T.y - 13); g.fill();
+      }
       g.restore();
-      if (L.held) tether(L, L.strain, '160,220,230');
-      else if (this.phase === 'guide') { g.strokeStyle = `rgba(160,220,230,${0.3 + 0.25 * Math.sin(st.t * 5)})`; g.lineWidth = 1; g.beginPath(); g.arc(L.x, L.y, r * 3 + 8, 0, 7); g.stroke(); }
+      if (T && (guiding || around)) { // the tag a controller reads: who, how high, how fast he is coming down, and what he just heard
+        const sc = L.vy > SINK_MAX ? '255,96,76' : L.vy > SINK_WARN ? '255,196,110' : '160,220,230', d0 = this.dev;
+        const copied = this.copy && this.windT - this.copy.t < 1.2;
+        const s = around ? ['GOING AROUND', '255,176,112'] : copied ? ['COPIES: ' + this.copy.text, '255,255,255'] : L.vy > SINK_MAX && alt < 0.6 ? ['SINKING FAST', '255,96,76'] : d0 > 1 ? ['DRIFTING RIGHT', '255,176,112'] : d0 < -1 ? ['DRIFTING LEFT', '255,176,112'] : L.vy > SINK_WARN ? ['SINKING', '255,196,110'] : ['ON PATH', '120,255,170'];
+        const left = X > st.w * 0.55, d = left ? -1 : 1, tx = X + d * (r * 3 + 20), ty = Y - 20;
+        g.save(); g.font = '11px ' + MONO; g.textAlign = left ? 'right' : 'left'; g.textBaseline = 'middle';
+        g.strokeStyle = 'rgba(160,220,230,0.35)'; g.lineWidth = 1; g.beginPath(); g.moveTo(X + d * (r * 1.8 + 4), Y - 5); g.lineTo(tx - d * 5, ty + 10); g.stroke();
+        g.shadowColor = 'rgba(0,0,0,0.9)'; g.shadowBlur = 6;
+        g.fillStyle = 'rgba(160,220,230,0.8)'; g.fillText('MER 214', tx, ty);
+        if (!around) { g.fillStyle = `rgba(${sc},0.95)`; g.fillText(`${Math.round(alt * 12) * 100} FT  ↓ ${FPM(L.vy)}`, tx, ty + 14); }
+        g.fillStyle = `rgba(${s[1]},0.98)`; g.fillText(s[0], tx, ty + (around ? 14 : 28));
+        g.restore();
+      }
     }
-    drawRain(dt, this.windNow * 9, 0.34);
+    drawRain(dt, (this.windNow + (this.pend || 0) * 0.6) * 12, 0.34);
     g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.5;
     for (let i = 0; i < 26; i++) { const x = ((i * 137.5) % 100) / 100 * st.w, y = ((i * 61.3 + st.t * (3 + i % 5)) % 100) / 100 * st.h; g.fillStyle = 'rgba(200,170,120,0.10)'; g.fillRect(x, y, 1.4, 16 + i % 9 * 3); }
     g.restore();
-    vignette(0.7); grain(0.08);
+    vignette(0.7);
+    if (guiding) {
+      g.save(); g.globalCompositeOperation = 'lighter'; g.font = '11px ' + MONO; g.textBaseline = 'middle';
+      // a gust, seen before it is felt: it comes in from the side it will push from
+      if (this.pend || this.gust) {
+        const d = Math.sign(this.pend || this.gust), a = this.pend ? 0.55 + 0.4 * Math.sin(st.t * 14) : 0.35, ex = d > 0 ? 16 : st.w - 16, y = st.h * 0.36;
+        g.strokeStyle = `rgba(190,225,240,${a})`; g.lineWidth = 2;
+        for (let i = 0; i < 3; i++) { const x = ex + d * (i * 12 + (st.t * 40) % 12); g.beginPath(); g.moveTo(x - d * 7, y - 10); g.lineTo(x, y); g.lineTo(x - d * 7, y + 10); g.stroke(); }
+        g.fillStyle = `rgba(190,225,240,${a})`; g.textAlign = d > 0 ? 'left' : 'right'; g.fillText('GUST', ex, y + 24);
+      }
+      // the line, and the calls under your thumb
+      g.textAlign = 'center';
+      if (!this.keyed) { g.fillStyle = `rgba(255,150,110,${0.55 + 0.35 * Math.sin(st.t * 6)})`; g.fillText('LINE DEAD · HOLD TO SPEAK', st.w / 2, st.h - 26); }
+      else { g.fillStyle = 'rgba(160,220,230,0.6)'; g.fillText('LINE OPEN', st.w / 2, st.h - 26); }
+      if (this.ptrHeld) {
+        const ax = clamp(this.A.x, 118, st.w - 118), ay = clamp(this.A.y, 96, st.h - 96), c = '160,220,230';
+        g.strokeStyle = `rgba(${c},0.3)`; g.lineWidth = 1; g.beginPath(); g.arc(ax, ay, TH, 0, 7); g.stroke();
+        glow(ax + (st.ptr.x - this.A.x), ay + (st.ptr.y - this.A.y), 22, c, 0.3);
+        const lab = (t, x, y, on, al) => { g.textAlign = al; g.fillStyle = on ? 'rgba(255,255,255,1)' : `rgba(${c},0.6)`; g.shadowColor = 'rgba(0,0,0,0.9)'; g.shadowBlur = 6; g.fillText(t, x, y); if (on) glow(x + (al === 'left' ? 30 : al === 'right' ? -30 : 0), y, 34, c, 0.22); };
+        lab('← COME LEFT', ax - TH - 10, ay, this.hot === 'left', 'right'); lab('COME RIGHT →', ax + TH + 10, ay, this.hot === 'right', 'left');
+        lab('EASE IT', ax, ay - TH - 16, this.hot === 'up', 'center'); lab('BRING IT DOWN', ax, ay + TH + 16, this.hot === 'down', 'center');
+      }
+      g.restore();
+    }
+    grain(0.08);
   },
 };
 
@@ -326,10 +449,10 @@ const lake = {
     else if (n === 5) { await voice('there’s a little wind now. you don’t mind wind.', 1800); voiceOff(); }
     else if (n === 8) { this.spawnOn = false; await wait(1500); await voice('that’s a whole phrase. listen.', 800); S.playTheme({ count: 8, beat: 0.6, vel: 0.3 }); await wait(5600); await voice('I think it’s yours. I’ll keep that too.', 2200); voiceOff(); this.endDraft(); }
   },
-  async gone(L) {
+  async gone(L, why) {
     st.lost++; S.lost();
     if (!this.spawnOn && st.landed === 0) setTimeout(() => this.spawn(), 1500 * FAST);
-    if (st.lost === 1) { await voice('it’s all right. that one was tired.', 1600); voiceOff(); }
+    if (why === 'fast' && !this.toldFast) { this.toldFast = true; await voice('that one met the water too fast. it went out.', 1500); await voice('slow them near the end. keep your hand above.', 1700); voiceOff(); } else if (st.lost === 1) { await voice('the wind carried that one off. it’s all right.', 1600); voiceOff(); }
   },
   async endDraft() {
     await wait(1500); card.className = 'solid'; card.innerHTML = `<h1>Soft Landing</h1><p class='mono'>draft one ends here</p><p class='serif' style='opacity:.8;margin-top:1em'>The tower and the first minute of the lake.<br>What the lights are comes next.</p><button id='again'>again</button>`;
@@ -342,12 +465,12 @@ const lake = {
     for (const L of this.lights) {
       if (L.done) continue; stepLight(L, dt, this.env);
       if (L.held) S.guideSet(clamp((L.wy - L.y) / (st.h * 0.7), 0, 1), L.strain * 0.5 + clamp(L.vy / 0.09, 0, 1) * 0.5);
-      if (L.x < -40 || L.x > st.w + 40) { L.done = true; if (L === this.cur) this.up(); this.gone(L); continue; }
+      if (L.x < -40 || L.x > st.w + 40) { L.done = true; if (L === this.cur) this.up(); this.gone(L, 'wind'); continue; }
       if (L.y >= L.wy) {
         L.done = true; if (L === this.cur) this.up(); const sink = L.vy, soft = clamp(1 - (sink - 0.02) / 0.05, 0, 1);
         st.log.push(`LAND sink=${sink.toFixed(3)} soft=${soft.toFixed(2)}`);
         this.ripples.push({ x: L.x, y: L.wy, t: 0, s: 0.5 + L.depth, hard: 1 - soft }); S.splash(soft);
-        if (sink > 0.072) { this.gone(L); continue; } // it hit the water: it goes out
+        if (sink > 0.072) { this.gone(L, 'fast'); continue; } // it hit the water: it goes out
         S.landNote(soft); this.lanterns.push({ x: L.x, y: L.wy, depth: L.depth, ph: rnd(7), hue: L.hue, born: st.t, soft }); this.landed(L, soft);
       }
     }
@@ -377,7 +500,7 @@ const lake = {
       glow(L.x, L.y, 70 * s, col, 0.14 * fl); glow(L.x, L.y, 13 * s, '255,246,226', 0.95 * fl);
       // its reflection rises to meet it: that gap is your altitude
       const ry = L.wy + (L.wy - L.y) * 0.35; if (ry < H + 40) { for (let j = 0; j < 7; j++) { const wob = Math.sin(st.t * 2.4 + j * 1.2 + L.ph) * (3 + alt * 8) * s; g.fillStyle = `rgba(${col},${0.22 * (1 - alt * 0.8) * (1 - j / 7)})`; g.fillRect(L.x - 6 * s + wob, ry + j * 4 * s, 12 * s, 2 * s); } }
-      g.strokeStyle = `rgba(255,236,210,${0.16 * (1 - alt)})`; g.lineWidth = 1; g.beginPath(); g.ellipse(L.x, L.wy, 26 * s, 6 * s, 0, 0, 7); g.stroke();
+      g.strokeStyle = L.vy > 0.072 ? `rgba(255,110,80,${0.3 + 0.5 * (1 - alt)})` : `rgba(255,236,210,${0.18 + 0.3 * (1 - alt)})`; g.lineWidth = 1.3; g.beginPath(); g.ellipse(L.x, L.wy, 26 * s, 6 * s, 0, 0, 7); g.stroke();
     }
     g.restore();
     for (const L of this.lights) { if (L.held) tether(L, L.strain, '255,236,200'); }
@@ -402,6 +525,6 @@ function frame(now) {
   if (scene.draw) scene.draw(dt); else { g.fillStyle = '#07090e'; g.fillRect(0, 0, st.w, st.h); }
   requestAnimationFrame(frame);
 }
-addEventListener('resize', () => { if (scene === tower) { setFit(IMG.tower, 0.46, 0.52); if (tower.T) { tower.T = P(0.46, 0.665); tower.half = 0.062 * fit.iw * fit.s; } } if (scene === lake) setFit(IMG.lake, 0.5, 0.5); });
+addEventListener('resize', () => { if (scene === tower) { setFit(IMG.tower, 0.46, 0.52); if (tower.T) tower.geom(); } if (scene === lake) setFit(IMG.lake, 0.5, 0.5); });
 Promise.all([load('tower'), load('lake')]).then(() => { title(); requestAnimationFrame(frame); });
 st.scenes = { tower, lake };
