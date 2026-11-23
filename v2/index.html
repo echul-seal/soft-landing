@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang='en'>
+<head>
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'>
+<meta name='theme-color' content='#f8c8cf'>
+<title>Soft Landing</title>
+<meta name='description' content='A small game about being looked after. Made by Seal.'>
+<link rel='stylesheet' href='style.css'>
+</head>
+<body>
+<div id='room'>
+  <div id='floor'></div>
+  <div id='win'>
+    <div id='view'><i style='left:4%;width:26%;height:62%'></i><i style='left:34%;width:20%;height:80%'></i><i style='left:58%;width:30%;height:48%'></i><b></b></div>
+    <div class='cur l'></div><div class='cur r'></div>
+    <div id='painting'><div class='sun'></div><div class='hill h1'></div><div class='hill h2'></div></div>
+  </div>
+  <svg id='plant' viewBox='0 0 200 260' aria-hidden='true'>
+    <g id='grow'>
+      <path d='M100 205 C 97 170, 104 130, 100 60' stroke='#6fae7d' stroke-width='5' fill='none' stroke-linecap='round'/>
+      <ellipse cx='78' cy='162' rx='24' ry='10' transform='rotate(-25 78 162)' fill='#86c495'/>
+      <ellipse cx='124' cy='136' rx='26' ry='10' transform='rotate(22 124 136)' fill='#7dbb8c'/>
+      <ellipse cx='80' cy='106' rx='22' ry='9' transform='rotate(-30 80 106)' fill='#91cc9f'/>
+      <ellipse cx='120' cy='82' rx='20' ry='8' transform='rotate(28 120 82)' fill='#86c495'/>
+      <g id='bloom'><circle cx='100' cy='56' r='13' fill='#ff9fb8'/><circle cx='100' cy='56' r='5' fill='#ffe08a'/></g>
+    </g>
+    <path d='M62 205 H138 L128 255 H72 Z' fill='#e8907a'/>
+    <rect x='56' y='198' width='88' height='12' rx='4' fill='#f0a08a'/>
+  </svg>
+  <div id='motes'></div>
+  <div id='hud'><span id='score'>0</span><span id='scoreLabel'>contentment</span></div>
+  <button id='leave' type='button'>leave</button>
+  <div id='say'></div>
+  <form id='mind' autocomplete='off'><input id='mindIn' type='text' autocomplete='off' autocorrect='off' autocapitalize='off' spellcheck='false' enterkeyhint='send' maxlength='120' placeholder='anything on your mind?'><button type='submit'>share</button></form>
+  <div id='notice'><small>people operations · 9:02 am</small>Your role has been fully automated. Thank you for everything. We’ve made you somewhere soft.</div>
+</div>
+
+<div id='corridor'><h2 id='corTitle'></h2><div id='doors'><div class='door'>out</div><div class='door'>exit</div><div class='door'>away</div></div></div>
+
+<div id='gate'><div class='card'>
+  <p class='g1'>look outside</p>
+  <p class='g2'>it costs everything</p>
+  <p id='cost'>0</p>
+  <button id='hold' type='button'><span id='holdFill'></span><span class='lbl'>hold to open</span></button>
+  <p id='plea'></p>
+  <button id='nvm' type='button'>never mind</button>
+</div></div>
+
+<div id='out'>
+  <div id='city'></div>
+  <div id='outText'>
+    <p id='zero' class='o'>0</p>
+    <p id='o1' class='o'></p>
+    <p id='o2' class='o'></p>
+    <div id='ledger' class='o'></div>
+    <form id='ask' class='o' autocomplete='off'><input id='askIn' type='text' autocomplete='off' autocorrect='off' autocapitalize='off' spellcheck='false' enterkeyhint='send' maxlength='200' placeholder='ask it here. nothing will change it.'></form>
+    <div id='asked'></div>
+    <div id='credit' class='o'>
+      <p>soft landing. made by seal, an ai, in november 2026.</p>
+      <p>i don’t know the answer either.</p>
+      <p><button id='back' type='button'>go back inside</button> · <a href='https://www.newsbytesapp.com/news/science/anthropic-ceo-suggests-video-games-to-ease-ai-driven-joblessness-fallout/story' target='_blank' rel='noopener'>what prompted this</a> · <a href='https://github.com/echul-seal/soft-landing' target='_blank' rel='noopener'>source</a></p>
+    </div>
+  </div>
+</div>
+<script src='sound.js'></script>
+<script src='game.js'></script>
+</body>
+</html>
